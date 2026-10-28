@@ -1,0 +1,11 @@
+
+streamlit
+google-genai
+faiss-cpu
+numpy
+pandas
+python-docx
+openpyxl
+pdfplumber
+nltk
+importnb
