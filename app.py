@@ -8,6 +8,7 @@ from docx import Document
 from google import genai
 from google.genai import types
 import os 
+import zipfile
 
 st.set_page_config(
     page_title="AIOS",
@@ -263,35 +264,45 @@ if page == "Chat":
         st.caption("Select a file above to let AIOS use its contents in your next message.")
 
 
-
 elif page == "Workspace":
-    st.title("📂 Workspace")
-    st.caption("Manage your AIOS workspace.")
+
+    st.title("📂 AIOS File Manager")
+    st.caption("Upload, browse, select and manage your workspace files.")
 
     st.code(str(WORKSPACE), language=None)
 
-    st.subheader("Upload Files")
+    # ---------------- UPLOAD FOLDER ----------------
+
+    st.subheader("Upload Folder or Files")
 
     uploaded_files = st.file_uploader(
-        "Select files from your computer",
-        accept_multiple_files=True,
-        key="workspace_uploader"
+        "Select a folder or multiple files",
+        accept_multiple_files="directory",
+        key="workspace_directory_upload"
     )
 
-    if st.button("Upload Files", type="primary"):
+    if st.button("Upload to Workspace", type="primary"):
+
         if uploaded_files:
+
             uploaded_count = 0
 
             for uploaded_file in uploaded_files:
-                filename = Path(
-                    uploaded_file.name.replace("\\", "/")
-                ).name
 
                 try:
-                    target = safe_path(filename)
+                    relative_path = Path(
+                        uploaded_file.name.replace("\\", "/")
+                    )
+
+                    if relative_path.is_absolute() or ".." in relative_path.parts:
+                        raise ValueError("Invalid file path.")
+
+                    target = safe_path(relative_path)
+
+                    target.parent.mkdir(parents=True, exist_ok=True)
 
                     if target.exists():
-                        st.warning(f"{filename} already exists. Skipped.")
+                        st.warning(f"{relative_path} already exists. Skipped.")
                         continue
 
                     with target.open("xb") as file:
@@ -300,36 +311,137 @@ elif page == "Workspace":
                     uploaded_count += 1
 
                 except Exception as error:
-                    st.error(f"{filename}: {error}")
+                    st.error(f"{uploaded_file.name}: {error}")
 
-            if uploaded_count:
-                st.success(f"{uploaded_count} file(s) uploaded successfully!")
-
+            st.success(f"{uploaded_count} files uploaded!")
             st.rerun()
+
         else:
-            st.warning("Please select at least one file.")
+            st.warning("Please select a folder or files.")
 
     st.divider()
 
-    st.subheader("Workspace Files")
+    # ---------------- FOLDER EXPLORER ----------------
 
-    if st.button("Refresh workspace"):
-        st.rerun()
+    st.subheader("📁 Browse Workspace")
 
     all_items = list_files()
 
-    if not all_items:
-        st.info("Your workspace is empty.")
+    folders = [
+        str(item.relative_to(WORKSPACE))
+        for item in all_items
+        if item.is_dir()
+    ]
 
-    for item in all_items:
+    folder_options = ["All folders"] + folders
+
+    selected_folder = st.selectbox(
+        "Select a folder",
+        folder_options
+    )
+
+    if selected_folder == "All folders":
+        current_folder = WORKSPACE
+    else:
+        current_folder = safe_path(selected_folder)
+
+    current_files = [
+        item for item in current_folder.rglob("*")
+        if item.is_file()
+        and item.is_relative_to(current_folder)
+        and safe_path(item.relative_to(WORKSPACE)) == item
+    ]
+
+    st.caption(f"{len(current_files)} files found")
+
+    # ---------------- FILE SELECTION ----------------
+
+    selected_files = []
+
+    for item in current_files:
+
         relative = str(item.relative_to(WORKSPACE))
 
-        if item.is_dir():
-            st.write(f"📁 {relative}")
-        else:
-            st.write(f"📄 {relative} · {item.stat().st_size:,} bytes")
+        col1, col2, col3 = st.columns([0.5, 5, 2])
 
+        with col1:
+            checked = st.checkbox(
+                "Select",
+                key=f"select_{relative}",
+                label_visibility="collapsed"
+            )
 
+        with col2:
+            st.write(f"📄 {relative}")
+
+        with col3:
+            st.caption(f"{item.stat().st_size:,} bytes")
+
+        if checked:
+            selected_files.append(relative)
+
+    st.divider()
+
+    # ---------------- FILE OPERATIONS ----------------
+
+    st.subheader("⚙️ File Operations")
+
+    st.write(f"Selected files: **{len(selected_files)}**")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        if st.button("🗑️ Delete Selected", use_container_width=True):
+
+            if selected_files:
+
+                for relative in selected_files:
+                    target = safe_path(relative)
+
+                    if target.is_file():
+                        target.unlink()
+
+                st.success("Selected files deleted!")
+                st.rerun()
+
+            else:
+                st.warning("Select files first.")
+
+    with col2:
+
+        if st.button("📦 Prepare Download", use_container_width=True):
+
+            if selected_files:
+
+                zip_buffer = io.BytesIO()
+
+                with zipfile.ZipFile(
+                    zip_buffer, "w", zipfile.ZIP_DEFLATED
+                ) as zip_file:
+
+                    for relative in selected_files:
+                        target = safe_path(relative)
+
+                        if target.is_file():
+                            zip_file.write(target, arcname=relative)
+
+                st.session_state["selected_files_zip"] = (
+                    zip_buffer.getvalue()
+                )
+
+            else:
+                st.warning("Select files first.")
+
+    if "selected_files_zip" in st.session_state:
+
+        st.download_button(
+            "⬇️ Download Selected Files",
+            data=st.session_state["selected_files_zip"],
+            file_name="AIOS_Selected_Files.zip",
+            mime="application/zip",
+            use_container_width=True
+        )
 
 
 
