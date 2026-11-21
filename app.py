@@ -263,14 +263,63 @@ if page == "Chat":
         st.caption("Select a file above to let AIOS use its contents in your next message.")
 
 
+
 elif page == "Workspace":
     st.title("📂 Workspace")
-    st.caption("Explore your local AIOS workspace.")
+    st.caption("Manage your AIOS workspace.")
 
     st.code(str(WORKSPACE), language=None)
 
+    st.subheader("Upload Files")
+
+    uploaded_files = st.file_uploader(
+        "Select files from your computer",
+        accept_multiple_files=True,
+        key="workspace_uploader"
+    )
+
+    if st.button("Upload Files", type="primary"):
+        if uploaded_files:
+            uploaded_count = 0
+
+            for uploaded_file in uploaded_files:
+                filename = Path(
+                    uploaded_file.name.replace("\\", "/")
+                ).name
+
+                try:
+                    target = safe_path(filename)
+
+                    if target.exists():
+                        st.warning(f"{filename} already exists. Skipped.")
+                        continue
+
+                    with target.open("xb") as file:
+                        file.write(uploaded_file.getvalue())
+
+                    uploaded_count += 1
+
+                except Exception as error:
+                    st.error(f"{filename}: {error}")
+
+            if uploaded_count:
+                st.success(f"{uploaded_count} file(s) uploaded successfully!")
+
+            st.rerun()
+        else:
+            st.warning("Please select at least one file.")
+
+    st.divider()
+
+    st.subheader("Workspace Files")
+
     if st.button("Refresh workspace"):
         st.rerun()
+
+    all_items = list_files()
+
+    if not all_items:
+        st.info("Your workspace is empty.")
 
     for item in all_items:
         relative = str(item.relative_to(WORKSPACE))
@@ -279,6 +328,9 @@ elif page == "Workspace":
             st.write(f"📁 {relative}")
         else:
             st.write(f"📄 {relative} · {item.stat().st_size:,} bytes")
+
+
+
 
 
 elif page == "Files":
