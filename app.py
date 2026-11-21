@@ -7,6 +7,7 @@ from pathlib import Path
 from docx import Document
 from google import genai
 from google.genai import types
+import os 
 
 st.set_page_config(
     page_title="AIOS",
@@ -16,8 +17,16 @@ st.set_page_config(
 )
 
 MODEL = "gemini-3.8-flash"
-WORKSPACE = Path(r"C:\AIOS\WORKSPACE").resolve()
+# WORKSPACE = Path(r"C:\AIOS\WORKSPACE").resolve()
+# WORKSPACE.mkdir(parents=True, exist_ok=True)
+
+if os.name == 'nt':
+    WORKSPACE = Path(r"C:\AIOS\WORKSPACE").resolve()
+else:
+    WORKSPACE = Path(__file__).resolve().parent / "workspace"
+
 WORKSPACE.mkdir(parents=True, exist_ok=True)
+
 
 if "GEMINI_API_KEY" not in st.secrets:
     st.error("GEMINI_API_KEY is missing from .streamlit/secrets.toml")
